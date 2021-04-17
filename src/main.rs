@@ -6,20 +6,39 @@ use std::{
 };
 
 use xmltree::Element;
+use time::{
+	macros::*,
+	PrimitiveDateTime,
+	Date,
+	Time
+};
 
 fn main()
 {
     let args: Vec<String> = env::args().collect();
     println!("{:?}", args);
 
+    if args.len() < 2
+    {
+    	panic!("ERROR: Specify the .lss file to parse as a command line argument.\n    Example: {} MySplits.lss", args[0]);
+    }
+
     let filename = &args[1];
 
-    let mut root_element = parseFile(filename.to_string());
+    let root_element = parse_file(filename.to_string());
 
-	println!("{:#?}", root_element);
+    let attempt_history = build_attempt_history(&root_element);
+
+	// for (i, attempt_date_time) in attempt_history.iter().enumerate()
+	// {
+	// 	println!("Attempt {} started on {}", (i+1), attempt_date_time);
+	// }
+
+	
+
 }
 
-fn parseFile(filename: String) -> Element
+fn parse_file(filename: String) -> Element
 {
 	let buf = {
         let r = File::open(filename).unwrap();
@@ -34,68 +53,53 @@ fn parseFile(filename: String) -> Element
     Element::parse(contents.as_bytes()).unwrap()
 }
 
-// TODO - implement PartialOrd for comparison
-struct RealTime
-{
-	// fn as_string()
-	// equal and compare
-
-	 hours:   u32;
-	 minutes: u32;
-	 seconds: float;
-};
-
 struct SubSplit
 {
-	name: str;
-	// vector of ID/attempt pairs
-	bestTime: RealTime;
-
-	//fn getTimeForAttempt(attemptId: u32) -> RealTime
-	//{
-
-	//}
-
-	//fn getBest() -> RealTime
-	//{
-
-	//}
-};
-
-struct AttemptHistory
-{
-	// TODO - Find time/date data format to use
-	//attemptStartTimes: Vec<TimeDate>;
-
-	//fn getStartTimeById(attemptId: u32) -> RealTime
-	//{
-
-	//}	
-};
+	name: String,
+	attempts: HashMap<u32, Time>,
+	best_time: Time,
+}
 
 struct Segment
 {
-	name: str;
-	children: Vec<SubSplit>;
-	sumOfBest: RealTime;
-	sumOfBestNonSubsplit: RealTime;
+	name: String,
+	children: Vec<SubSplit>,
+	sum_of_best: Time,
+	sum_of_best_nonsubsplit: Time,
+}
 
-	//fn getSumOfBest(segment: Segment) -> RealTime
-	//{
+fn build_attempt_history(root: &xmltree::Element) -> Vec<PrimitiveDateTime>
+{
+	let mut attempt_history: Vec<PrimitiveDateTime> = Vec::new();
+	let attempt_history_root = root.get_child("AttemptHistory").expect("Can't find AttemptHistory root");
+	for child in &attempt_history_root.children
+	{
+		if let xmltree::XMLNode::Element(child_element) = child
+		{
+			//println!("{:?}", child_element);
+			let attempt_id = child_element.attributes.get("id").expect("Attempt is missing ID");
+			let start_time = child_element.attributes.get("started").expect("Attempt is missing started time");
+			let date_time_vec = start_time.split(" ").collect::<Vec<_>>();
 
-	//}
+			let date_parts = date_time_vec[0].split("/").collect::<Vec<_>>();
+			let month = date_parts[0].parse::<u8>().unwrap();
+			let day = date_parts[1].parse::<u8>().unwrap();
+			let year = date_parts[2].parse::<i32>().unwrap();
+			let date = Date::try_from_ymd(year, month, day).unwrap();
 
-	//fn getSumOfBestNonSubsplit(segment: Segment) -> RealTime
-	//{
+			let time_parts = date_time_vec[1].split(":").collect::<Vec<_>>();
+			let hours = time_parts[0].parse::<u8>().unwrap();
+			let minutes = time_parts[1].parse::<u8>().unwrap();
+			let seconds = time_parts[2].parse::<u8>().unwrap();
+			let time = Time::try_from_hms(hours, minutes, seconds).unwrap();
 
-	//}
+			let date_time = PrimitiveDateTime::new(date, time);
+			attempt_history.push(date_time);
+		}
+	}
 
-};
-
-//fn buildAttemptHistory(root: Element) -> AttemptHistory
-//{
-
-//}
+	return attempt_history;
+}
 
 //fn buildSegments(root: Element) -> Vec<Segment>
 //{
