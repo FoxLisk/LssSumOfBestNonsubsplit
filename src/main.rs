@@ -1,7 +1,8 @@
 use std::{
     env,
+    fmt,
     fs::File,
-    collections::HashMap,
+    collections::BTreeMap,
     io::{self, prelude::*},
     str,
 };
@@ -17,7 +18,6 @@ use time::{
 fn main()
 {
     let args: Vec<String> = env::args().collect();
-    println!("{:?}", args);
 
     if args.len() < 2
     {
@@ -29,13 +29,37 @@ fn main()
     let root_element = parse_lss_file(filename.to_string());
 
     let attempt_history = build_attempt_history(&root_element);
-
-	// for (attempt_id, attempt_date_time) in &attempt_history
+	// #[cfg(debug_assertions)]
 	// {
-	// 	println!("Attempt {} started on {}", attempt_id, attempt_date_time);
+	// 	for (attempt_id, attempt_date_time) in &attempt_history
+	// 	{
+	// 		println!("Attempt {} started on {}", attempt_id, attempt_date_time);
+	// 	}
 	// }
 
 	let segments = build_segments(&root_element);
+	// #[cfg(debug_assertions)]
+	// {
+	// 	for segment in &segments
+	// 	{
+	// 		println!("Segment {}", segment.name);
+	// 		for subsplit in &segment.subsplits
+	// 		{
+	// 			println!("  {}", subsplit);
+	// 		}
+	// 	}
+	// }
+
+	// TODO - Need to convert the Time objects to Duration to be able to add them up
+	// let mut sum_of_best = Time::try_from_hms_nano(0,0,0,0).unwrap();
+	// let mut sum_of_best_nonsubsplit = Time::try_from_hms_nano(0,0,0,0).unwrap();
+	// for segment in segments
+	// {
+	// 	sum_of_best += segment.sum_of_best;
+	// 	sum_of_best_nonsubsplit += segment.sum_of_best_nonsubsplit;
+	// }
+
+	// println!("LSS Sum of Best: {}\nSum of Best Non-SubSplits: {}", sum_of_best, sum_of_best_nonsubsplit);
 }
 
 // Opens a LSS file and parses it as XML.
@@ -60,9 +84,9 @@ fn parse_lss_file(filename: String) -> Element
 }
 
 // Parses the LSS <AttemptHistory> node, converting the <Attempt> nodes to a vector of PrimitiveDateTime objects
-fn build_attempt_history(root: &xmltree::Element) -> HashMap<u32, PrimitiveDateTime>
+fn build_attempt_history(root: &xmltree::Element) -> BTreeMap<u32, PrimitiveDateTime>
 {
-	let mut attempt_history: HashMap<u32, PrimitiveDateTime> = HashMap::new();
+	let mut attempt_history: BTreeMap<u32, PrimitiveDateTime> = BTreeMap::new();
 	
 	// Pull out the attempt history then iterate through the attempts
 	let attempt_history_root = root.get_child("AttemptHistory").expect("Can't find 'AttemptHistory' node");
@@ -117,11 +141,25 @@ fn build_time_from_realtime_str(realtime: &str) -> Time
 	return Time::try_from_hms_nano(hours, minutes, seconds, nano).unwrap();
 }
 
+#[derive(Clone)]
 struct SubSplit
 {
 	name: String,
-	attempts: HashMap<u32, Time>,
+	attempts: BTreeMap<u32, Time>,
 	best_time: Time,
+}
+
+impl fmt::Display for SubSplit
+{
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+	{
+		write!(f, "SubSplit: {}, best time: {}", self.name, self.best_time);
+		for (attempt_id, attempt_time) in &self.attempts
+		{
+			write!(f, "\n    Attempt ID {} completed in {}", attempt_id, attempt_time);
+		}
+		write!(f, "\n")
+	}
 }
 
 // Parses a single <Segment> node into a SubSplit structure
@@ -133,11 +171,13 @@ fn build_subsplit(subsplit_root: &xmltree::Element) -> SubSplit
 	let mut subsplit = SubSplit
 	{
 		name 	  : subsplit_name_str.to_string(),
-		attempts  : HashMap::new(),
+		attempts  : BTreeMap::new(),
 		best_time : build_time_from_realtime_str(&best_time_root.get_text().unwrap()),
 	};
 
-	//println!("Found SubSplit named {}", subsplit.name);
+	// #[cfg(debug_assertions)]
+	// println!("Found SubSplit named {}", subsplit.name);
+
 	let segment_history_root = &subsplit_root.get_child("SegmentHistory").unwrap();
 	for child in &segment_history_root.children
 	{
@@ -155,7 +195,8 @@ fn build_subsplit(subsplit_root: &xmltree::Element) -> SubSplit
 
 					subsplit.attempts.insert(time_id, realtime);
 
-					//println!("  Subsplit attempt {} completed in {}", time_id, realtime);
+					// #[cfg(debug_assertions)]
+					// println!("  Subsplit attempt {} completed in {}", time_id, realtime);
 				}
 			}
 		}
@@ -167,7 +208,7 @@ fn build_subsplit(subsplit_root: &xmltree::Element) -> SubSplit
 struct Segment
 {
 	name: String,
-	children: Vec<SubSplit>,
+	subsplits: Vec<SubSplit>,
 	sum_of_best: Time,
 	sum_of_best_nonsubsplit: Time,
 }
@@ -179,6 +220,7 @@ fn build_segments(root: &xmltree::Element) -> Vec<Segment>
 	let mut segments_root = root.get_child("Segments").expect("Can't find 'Segments' node");
 
 	let num_segments = segments_root.children.len();
+	let mut subsplit_list: Vec<SubSplit> = Vec::new();
 	for i in 0..num_segments
 	{
 		if let xmltree::XMLNode::Element(child_segment) = &segments_root.children.get(i).unwrap()
@@ -186,12 +228,33 @@ fn build_segments(root: &xmltree::Element) -> Vec<Segment>
 			if child_segment.name == "Segment"
 			{
 				let mut subsplit = build_subsplit(child_segment);
+				
+				// #[cfg(debug_assertions)]
+				// println!("{}", subsplit);
+				
+				let is_segment = (subsplit.name.chars().next().unwrap() != '-');
+				
+				subsplit_list.push(subsplit);
+				 
+				if is_segment
+				{
+					let segment_subsplit = &subsplit_list.last().unwrap();
+					let segment = Segment
+					{
+						name: segment_subsplit.name.clone(),
+						subsplits: subsplit_list.to_vec(),
+						sum_of_best: Time::try_from_hms_nano(0,0,0,0).unwrap(),
+						sum_of_best_nonsubsplit: Time::try_from_hms_nano(0,0,0,0).unwrap(),
+					};
+
+					segment_list.push(segment);
+					subsplit_list.clear();
+				}
 			}
 		}
 	}
 
 	return segment_list;
-
 }
 
 // Parses a set of LSS <Segment> nodes into a Segment object
@@ -207,6 +270,3 @@ fn build_segments(root: &xmltree::Element) -> Vec<Segment>
 // }
 
 // Parses a LSS <Segment> into a SubSplit object
-
-
-
