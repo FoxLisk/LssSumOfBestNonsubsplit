@@ -1,6 +1,7 @@
 use std::{
     env,
     fs::File,
+    collections::HashMap,
     io::{self, prelude::*},
     str,
 };
@@ -25,32 +26,95 @@ fn main()
 
     let filename = &args[1];
 
-    let root_element = parse_file(filename.to_string());
+    let root_element = parse_lss_file(filename.to_string());
 
     let attempt_history = build_attempt_history(&root_element);
 
-	// for (i, attempt_date_time) in attempt_history.iter().enumerate()
+	// for (attempt_id, attempt_date_time) in &attempt_history
 	// {
-	// 	println!("Attempt {} started on {}", (i+1), attempt_date_time);
+	// 	println!("Attempt {} started on {}", attempt_id, attempt_date_time);
 	// }
 
-	
-
+	let segments = build_segments(&root_element);
 }
 
-fn parse_file(filename: String) -> Element
+// Opens a LSS file and parses it as XML.
+fn parse_lss_file(filename: String) -> Element
 {
 	let buf = {
         let r = File::open(filename).unwrap();
         let mut reader = io::BufReader::new(r);
+        
+        // xmltree does not properly handle the prolog line, so we have to strip it out when reading the file
         reader.read_until(b'\n', &mut Vec::new()).unwrap();
+        
+		// Read the rest of the file into a buffer to be parsed
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf).unwrap();
         buf
     };
+    // Convert the file contents to a str, then parse
     let contents = 	str::from_utf8(&buf).unwrap();
 
     Element::parse(contents.as_bytes()).unwrap()
+}
+
+// Parses the LSS <AttemptHistory> node, converting the <Attempt> nodes to a vector of PrimitiveDateTime objects
+fn build_attempt_history(root: &xmltree::Element) -> HashMap<u32, PrimitiveDateTime>
+{
+	let mut attempt_history: HashMap<u32, PrimitiveDateTime> = HashMap::new();
+	
+	// Pull out the attempt history then iterate through the attempts
+	let attempt_history_root = root.get_child("AttemptHistory").expect("Can't find 'AttemptHistory' node");
+	for child in &attempt_history_root.children
+	{
+		if let xmltree::XMLNode::Element(child_element) = child
+		{
+			// We only expect Attempt Elements
+			if child_element.name == "Attempt"
+			{
+				// Pull out the started time string and convert it to a PrimitiveDateTime to add to our vector
+				let attempt_id_str = child_element.attributes.get("id").expect("Attempt is missing ID");
+				let attempt_id     = attempt_id_str.parse::<u32>().unwrap();
+				let start_time     = child_element.attributes.get("started").expect("Attempt is missing started time");
+				let date_time_vec  = start_time.split(" ").collect::<Vec<_>>();
+
+				let date_parts = date_time_vec[0].split("/").collect::<Vec<_>>();
+				let month      = date_parts[0].parse::<u8>().unwrap();
+				let day 	   = date_parts[1].parse::<u8>().unwrap();
+				let year       = date_parts[2].parse::<i32>().unwrap();
+				let date       = Date::try_from_ymd(year, month, day).unwrap();
+
+				let time_parts = date_time_vec[1].split(":").collect::<Vec<_>>();
+				let hours      = time_parts[0].parse::<u8>().unwrap();
+				let minutes    = time_parts[1].parse::<u8>().unwrap();
+				let seconds    = time_parts[2].parse::<u8>().unwrap();
+				let time       = Time::try_from_hms(hours, minutes, seconds).unwrap();
+
+				let date_time  = PrimitiveDateTime::new(date, time);
+				attempt_history.insert(attempt_id, date_time);
+			}
+		}
+	}
+
+	return attempt_history;
+}
+
+// Utility function that converts a LSS <RealTime> node string into a Time structure
+fn build_time_from_realtime_str(realtime: &str) -> Time
+{
+	let time_parts   = realtime.split(":").collect::<Vec<_>>();
+	let hours        = time_parts[0].parse::<u8>().unwrap();
+	let minutes      = time_parts[1].parse::<u8>().unwrap();
+	let sec_ms_parts = time_parts[2].split(".").collect::<Vec<_>>();
+	let seconds      = sec_ms_parts[0].parse::<u8>().unwrap();
+	let mut nano     = 0;
+	if sec_ms_parts.len() > 1
+	{
+		nano = sec_ms_parts[1].parse::<u32>().unwrap();
+	}
+
+	return Time::try_from_hms_nano(hours, minutes, seconds, nano).unwrap();
 }
 
 struct SubSplit
@@ -58,6 +122,46 @@ struct SubSplit
 	name: String,
 	attempts: HashMap<u32, Time>,
 	best_time: Time,
+}
+
+// Parses a single <Segment> node into a SubSplit structure
+fn build_subsplit(subsplit_root: &xmltree::Element) -> SubSplit
+{
+	let subsplit_name_str = &subsplit_root.get_child("Name").unwrap().get_text().unwrap();
+	let best_time_root = &subsplit_root.get_child("BestSegmentTime").unwrap().get_child("RealTime").unwrap();
+
+	let mut subsplit = SubSplit
+	{
+		name 	  : subsplit_name_str.to_string(),
+		attempts  : HashMap::new(),
+		best_time : build_time_from_realtime_str(&best_time_root.get_text().unwrap()),
+	};
+
+	//println!("Found SubSplit named {}", subsplit.name);
+	let segment_history_root = &subsplit_root.get_child("SegmentHistory").unwrap();
+	for child in &segment_history_root.children
+	{
+		if let xmltree::XMLNode::Element(child_time) = child
+		{
+			let time_id_str = child_time.attributes.get("id").expect("Time is missing ID");
+			
+			// For some reason, there are some negative time IDs. Just ignore those
+			if let Ok(time_id) = time_id_str.parse::<u32>()
+			{
+				// Similarly, ignore nodes that have no <RealTime> child node
+				if let Some(child_realtime) = child_time.get_child("RealTime")
+				{
+					let realtime = build_time_from_realtime_str(&child_realtime.get_text().unwrap());
+
+					subsplit.attempts.insert(time_id, realtime);
+
+					//println!("  Subsplit attempt {} completed in {}", time_id, realtime);
+				}
+			}
+		}
+	}
+
+	return subsplit;
 }
 
 struct Segment
@@ -68,42 +172,41 @@ struct Segment
 	sum_of_best_nonsubsplit: Time,
 }
 
-fn build_attempt_history(root: &xmltree::Element) -> Vec<PrimitiveDateTime>
+// Parses the LSS <Segments> node, converting the <Segment> nodes into SubSplit and Segment objects
+fn build_segments(root: &xmltree::Element) -> Vec<Segment>
 {
-	let mut attempt_history: Vec<PrimitiveDateTime> = Vec::new();
-	let attempt_history_root = root.get_child("AttemptHistory").expect("Can't find AttemptHistory root");
-	for child in &attempt_history_root.children
+	let mut segment_list: Vec<Segment> = Vec::new();
+	let mut segments_root = root.get_child("Segments").expect("Can't find 'Segments' node");
+
+	let num_segments = segments_root.children.len();
+	for i in 0..num_segments
 	{
-		if let xmltree::XMLNode::Element(child_element) = child
+		if let xmltree::XMLNode::Element(child_segment) = &segments_root.children.get(i).unwrap()
 		{
-			//println!("{:?}", child_element);
-			let attempt_id = child_element.attributes.get("id").expect("Attempt is missing ID");
-			let start_time = child_element.attributes.get("started").expect("Attempt is missing started time");
-			let date_time_vec = start_time.split(" ").collect::<Vec<_>>();
-
-			let date_parts = date_time_vec[0].split("/").collect::<Vec<_>>();
-			let month = date_parts[0].parse::<u8>().unwrap();
-			let day = date_parts[1].parse::<u8>().unwrap();
-			let year = date_parts[2].parse::<i32>().unwrap();
-			let date = Date::try_from_ymd(year, month, day).unwrap();
-
-			let time_parts = date_time_vec[1].split(":").collect::<Vec<_>>();
-			let hours = time_parts[0].parse::<u8>().unwrap();
-			let minutes = time_parts[1].parse::<u8>().unwrap();
-			let seconds = time_parts[2].parse::<u8>().unwrap();
-			let time = Time::try_from_hms(hours, minutes, seconds).unwrap();
-
-			let date_time = PrimitiveDateTime::new(date, time);
-			attempt_history.push(date_time);
+			if child_segment.name == "Segment"
+			{
+				let mut subsplit = build_subsplit(child_segment);
+			}
 		}
 	}
 
-	return attempt_history;
+	return segment_list;
+
 }
 
-//fn buildSegments(root: Element) -> Vec<Segment>
-//{
+// Parses a set of LSS <Segment> nodes into a Segment object
+// fn build_segment(segment_root: &xmltree::Element) -> Segment
+// {
+// 	let mut segment: Segment;
 
-//}
+// 	// Segments are a collection of <Segment> nodes with a leading '-', ending with a <Segment>
+// 	// without the leading '-'
+
+// 	return segment;
+
+// }
+
+// Parses a LSS <Segment> into a SubSplit object
+
 
 
