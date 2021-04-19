@@ -28,7 +28,9 @@ fn main()
 
     let root_element = parse_lss_file(filename.to_string());
 
-    let attempt_history = build_attempt_history(&root_element);
+    // We don't currently use the attempt history, but leaving it in case there's a desire to print info about which attempt(s)
+    // the best segments came from
+    let _attempt_history = build_attempt_history(&root_element);
 	// #[cfg(debug_assertions)]
 	// {
 	// 	for (attempt_id, attempt_date_time) in &attempt_history
@@ -130,7 +132,7 @@ fn build_attempt_history(root: &xmltree::Element) -> BTreeMap<u32, PrimitiveDate
 
 fn calc_total_seconds(hours: u8, minutes: u8, seconds: u8) -> i64
 {
-	return (i64::from(seconds) + (i64::from(minutes) * 60) + (i64::from(hours) * (60 * 60)));
+	return i64::from(seconds) + (i64::from(minutes) * 60) + (i64::from(hours) * (60 * 60));
 }
 
 // Utility function that converts a LSS <RealTime> node string into a Duration structure
@@ -163,10 +165,10 @@ impl fmt::Display for SubSplit
 {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
 	{
-		write!(f, "SubSplit: {}, best time: {:?}", self.name, self.best_time);
+		write!(f, "SubSplit: {}, best time: {:?}", self.name, self.best_time).expect("Write for subsplit display failed unexpectedly");
 		for (attempt_id, attempt_time) in &self.attempts
 		{
-			write!(f, "\n    Attempt ID {} completed in {:?}", attempt_id, attempt_time);
+			write!(f, "\n    Attempt ID {} completed in {:?}", attempt_id, attempt_time).expect("Write for subsplit display failed unexpectedly");
 		}
 		write!(f, "\n")
 	}
@@ -218,7 +220,6 @@ fn build_subsplit(subsplit_root: &xmltree::Element) -> SubSplit
 struct Segment
 {
 	name: String,
-	subsplits: Vec<SubSplit>,
 	sum_of_best: Time,
 	sum_of_best_nonsubsplit: Time,
 }
@@ -227,7 +228,7 @@ struct Segment
 fn build_segments(root: &xmltree::Element) -> Vec<Segment>
 {
 	let mut segment_list: Vec<Segment> = Vec::new();
-	let mut segments_root = root.get_child("Segments").expect("Can't find 'Segments' node");
+	let segments_root = root.get_child("Segments").expect("Can't find 'Segments' node");
 
 	let num_segments = segments_root.children.len();
 	let mut subsplit_list: Vec<SubSplit> = Vec::new();
@@ -237,12 +238,12 @@ fn build_segments(root: &xmltree::Element) -> Vec<Segment>
 		{
 			if child_segment.name == "Segment"
 			{
-				let mut subsplit = build_subsplit(child_segment);
+				let subsplit = build_subsplit(child_segment);
 				
 				// #[cfg(debug_assertions)]
 				// println!("{}", subsplit);
 				
-				let is_segment = (subsplit.name.chars().next().unwrap() != '-');
+				let is_segment = subsplit.name.chars().next().unwrap() != '-';
 				
 				subsplit_list.push(subsplit);
 				 
@@ -255,7 +256,6 @@ fn build_segments(root: &xmltree::Element) -> Vec<Segment>
 					let segment = Segment
 					{
 						name: segment_subsplit.name.clone(),
-						subsplits: subsplit_list.to_vec(),
 						sum_of_best: sum_of_best_time,
 						sum_of_best_nonsubsplit: sum_of_best_nonsubsplit,
 					};
