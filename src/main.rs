@@ -46,8 +46,8 @@ fn main()
 		#[cfg(debug_assertions)]
 		{
 			println!("Segment {}", segment.name);
-			println!("  Sum of Best: {}", segment.sum_of_best);
-			println!("  Sum of Best NonSubplit: {}", segment.sum_of_best_nonsubsplit);
+			println!("  Best Segment: {}", segment.sum_of_best);
+			println!("  Best Segment NonSubplit: {}", segment.sum_of_best_nonsubsplit);
 		}
 	
 		sum_of_best += time_to_duration(&segment.sum_of_best);
@@ -147,6 +147,7 @@ fn build_duration_from_realtime_str(realtime: &str) -> Duration
 	let mut nano     = 0;
 	if sec_ms_parts.len() > 1
 	{
+		// <RealTime> nodes have 7 decimal places, need to add a couple trailing zeroes to convert to nanoseconds
 		nano = sec_ms_parts[1].parse::<i32>().unwrap() * 100;
 	}
 
