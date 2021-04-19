@@ -9,9 +9,9 @@ use std::{
 
 use xmltree::Element;
 use time::{
-	macros::*,
-	PrimitiveDateTime,
 	Date,
+	Duration,
+	PrimitiveDateTime,
 	Time
 };
 
@@ -38,17 +38,17 @@ fn main()
 	// }
 
 	let segments = build_segments(&root_element);
-	// #[cfg(debug_assertions)]
-	// {
-	// 	for segment in &segments
-	// 	{
-	// 		println!("Segment {}", segment.name);
-	// 		for subsplit in &segment.subsplits
-	// 		{
-	// 			println!("  {}", subsplit);
-	// 		}
-	// 	}
-	// }
+	for segment in &segments
+	{
+		println!("Segment {}", segment.name);
+		println!("  Sum of Best: {}", segment.sum_of_best);
+		println!("  Sum of Best NonSubplit: {}", segment.sum_of_best_nonsubsplit);
+		// #[cfg(debug_assertions)]
+		// for subsplit in &segment.subsplits
+		// {
+		// 	println!("  {}", subsplit);
+		// }
+	}
 
 	// TODO - Need to convert the Time objects to Duration to be able to add them up
 	// let mut sum_of_best = Time::try_from_hms_nano(0,0,0,0).unwrap();
@@ -124,8 +124,13 @@ fn build_attempt_history(root: &xmltree::Element) -> BTreeMap<u32, PrimitiveDate
 	return attempt_history;
 }
 
-// Utility function that converts a LSS <RealTime> node string into a Time structure
-fn build_time_from_realtime_str(realtime: &str) -> Time
+fn calc_total_seconds(hours: u8, minutes: u8, seconds: u8) -> i64
+{
+	return (i64::from(seconds) + (i64::from(minutes) * 60) + (i64::from(hours) * (60 * 60)));
+}
+
+// Utility function that converts a LSS <RealTime> node string into a Duration structure
+fn build_duration_from_realtime_str(realtime: &str) -> Duration
 {
 	let time_parts   = realtime.split(":").collect::<Vec<_>>();
 	let hours        = time_parts[0].parse::<u8>().unwrap();
@@ -135,28 +140,28 @@ fn build_time_from_realtime_str(realtime: &str) -> Time
 	let mut nano     = 0;
 	if sec_ms_parts.len() > 1
 	{
-		nano = sec_ms_parts[1].parse::<u32>().unwrap();
+		nano = sec_ms_parts[1].parse::<i32>().unwrap();
 	}
 
-	return Time::try_from_hms_nano(hours, minutes, seconds, nano).unwrap();
+	return Duration::new(calc_total_seconds(hours, minutes, seconds), nano);
 }
 
 #[derive(Clone)]
 struct SubSplit
 {
 	name: String,
-	attempts: BTreeMap<u32, Time>,
-	best_time: Time,
+	attempts: BTreeMap<u32, Duration>,
+	best_time: Duration,
 }
 
 impl fmt::Display for SubSplit
 {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
 	{
-		write!(f, "SubSplit: {}, best time: {}", self.name, self.best_time);
+		write!(f, "SubSplit: {}, best time: {:?}", self.name, self.best_time);
 		for (attempt_id, attempt_time) in &self.attempts
 		{
-			write!(f, "\n    Attempt ID {} completed in {}", attempt_id, attempt_time);
+			write!(f, "\n    Attempt ID {} completed in {:?}", attempt_id, attempt_time);
 		}
 		write!(f, "\n")
 	}
@@ -172,7 +177,7 @@ fn build_subsplit(subsplit_root: &xmltree::Element) -> SubSplit
 	{
 		name 	  : subsplit_name_str.to_string(),
 		attempts  : BTreeMap::new(),
-		best_time : build_time_from_realtime_str(&best_time_root.get_text().unwrap()),
+		best_time : build_duration_from_realtime_str(&best_time_root.get_text().unwrap()),
 	};
 
 	// #[cfg(debug_assertions)]
@@ -191,7 +196,7 @@ fn build_subsplit(subsplit_root: &xmltree::Element) -> SubSplit
 				// Similarly, ignore nodes that have no <RealTime> child node
 				if let Some(child_realtime) = child_time.get_child("RealTime")
 				{
-					let realtime = build_time_from_realtime_str(&child_realtime.get_text().unwrap());
+					let realtime = build_duration_from_realtime_str(&child_realtime.get_text().unwrap());
 
 					subsplit.attempts.insert(time_id, realtime);
 
@@ -239,12 +244,15 @@ fn build_segments(root: &xmltree::Element) -> Vec<Segment>
 				if is_segment
 				{
 					let segment_subsplit = &subsplit_list.last().unwrap();
+					let sum_of_best_time = calc_sum_of_best(&subsplit_list);
+					let sum_of_best_nonsubsplit = calc_sum_of_best_nonsubsplit(&subsplit_list);
+
 					let segment = Segment
 					{
 						name: segment_subsplit.name.clone(),
 						subsplits: subsplit_list.to_vec(),
-						sum_of_best: Time::try_from_hms_nano(0,0,0,0).unwrap(),
-						sum_of_best_nonsubsplit: Time::try_from_hms_nano(0,0,0,0).unwrap(),
+						sum_of_best: sum_of_best_time,
+						sum_of_best_nonsubsplit: sum_of_best_nonsubsplit,
 					};
 
 					segment_list.push(segment);
@@ -257,16 +265,53 @@ fn build_segments(root: &xmltree::Element) -> Vec<Segment>
 	return segment_list;
 }
 
-// Parses a set of LSS <Segment> nodes into a Segment object
-// fn build_segment(segment_root: &xmltree::Element) -> Segment
-// {
-// 	let mut segment: Segment;
+fn calc_sum_of_best(subsplit_list: &Vec<SubSplit>) -> Time
+{
+	let mut sum_of_best_time = Time::try_from_hms_nano(0,0,0,0).unwrap();
 
-// 	// Segments are a collection of <Segment> nodes with a leading '-', ending with a <Segment>
-// 	// without the leading '-'
+	for subsplit in subsplit_list
+	{
+		sum_of_best_time += subsplit.best_time;
+	}
+	
+	return sum_of_best_time;
+}
 
-// 	return segment;
+fn calc_sum_of_best_nonsubsplit(subsplit_list: &Vec<SubSplit>) -> Time
+{
+	let attempt_ids = subsplit_list[0].attempts.keys();
+	// Initialize the current best attempt time to 23 hours.  If you have an actual speedrun with a single
+	// segment containing attempts longer than 23 hours you're on your own.
+	let mut curr_best = Time::try_from_hms_nano(23,0,0,0).unwrap();
 
-// }
+	for id in attempt_ids
+	{
+		let mut attempt_time = Time::try_from_hms_nano(0,0,0,0).unwrap();
+		let mut is_valid = true;
+		for subsplit in subsplit_list
+		{
+			match subsplit.attempts.get(id)
+			{
+				Some(subsplit_time) => attempt_time += subsplit_time.clone(),
+				None => {
+					is_valid = false;
+					break;
+				},
+			}
+		}
 
-// Parses a LSS <Segment> into a SubSplit object
+		if is_valid
+		{
+			if attempt_time < curr_best
+			{
+				curr_best = attempt_time;
+			}
+		}
+		else
+		{
+			continue;
+		}
+	}
+	
+	return curr_best;
+}

@@ -8,4 +8,4 @@ edition = "2018"
 
 [dependencies]
 xmltree = "*"
-time = "0.2.*"
+time = "0.2.26"
