@@ -147,7 +147,7 @@ fn build_duration_from_realtime_str(realtime: &str) -> Duration
 	let mut nano     = 0;
 	if sec_ms_parts.len() > 1
 	{
-		nano = sec_ms_parts[1].parse::<i32>().unwrap();
+		nano = sec_ms_parts[1].parse::<i32>().unwrap() * 100;
 	}
 
 	return Duration::new(calc_total_seconds(hours, minutes, seconds), nano);
