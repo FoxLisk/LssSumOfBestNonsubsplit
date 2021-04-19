@@ -43,12 +43,9 @@ fn main()
 	let mut sum_of_best_nonsubsplit = Time::try_from_hms_nano(0,0,0,0).unwrap();
 	for segment in &segments
 	{
-		#[cfg(debug_assertions)]
-		{
-			println!("Segment {}", segment.name);
-			println!("  Best Segment: {}", segment.sum_of_best);
-			println!("  Best Segment NonSubplit: {}", segment.sum_of_best_nonsubsplit);
-		}
+		println!("Segment {}", segment.name);
+		println!("  Best Segment: {}", segment.sum_of_best);
+		println!("  Best Segment NonSubplit: {}", segment.sum_of_best_nonsubsplit);
 	
 		sum_of_best += time_to_duration(&segment.sum_of_best);
 		sum_of_best_nonsubsplit += time_to_duration(&segment.sum_of_best_nonsubsplit);
