@@ -38,11 +38,21 @@ fn main()
 	// }
 
 	let segments = build_segments(&root_element);
+	
+	let mut sum_of_best = Time::try_from_hms_nano(0,0,0,0).unwrap();
+	let mut sum_of_best_nonsubsplit = Time::try_from_hms_nano(0,0,0,0).unwrap();
 	for segment in &segments
 	{
-		println!("Segment {}", segment.name);
-		println!("  Sum of Best: {}", segment.sum_of_best);
-		println!("  Sum of Best NonSubplit: {}", segment.sum_of_best_nonsubsplit);
+		#[cfg(debug_assertions)]
+		{
+			println!("Segment {}", segment.name);
+			println!("  Sum of Best: {}", segment.sum_of_best);
+			println!("  Sum of Best NonSubplit: {}", segment.sum_of_best_nonsubsplit);
+		}
+	
+		sum_of_best += time_to_duration(&segment.sum_of_best);
+		sum_of_best_nonsubsplit += time_to_duration(&segment.sum_of_best_nonsubsplit);
+
 		// #[cfg(debug_assertions)]
 		// for subsplit in &segment.subsplits
 		// {
@@ -50,16 +60,13 @@ fn main()
 		// }
 	}
 
-	// TODO - Need to convert the Time objects to Duration to be able to add them up
-	// let mut sum_of_best = Time::try_from_hms_nano(0,0,0,0).unwrap();
-	// let mut sum_of_best_nonsubsplit = Time::try_from_hms_nano(0,0,0,0).unwrap();
-	// for segment in segments
-	// {
-	// 	sum_of_best += segment.sum_of_best;
-	// 	sum_of_best_nonsubsplit += segment.sum_of_best_nonsubsplit;
-	// }
+	println!("Traditional LSS Sum of Best: {}\nSum of Best Non-SubSplits: {}", sum_of_best, sum_of_best_nonsubsplit);
+}
 
-	// println!("LSS Sum of Best: {}\nSum of Best Non-SubSplits: {}", sum_of_best, sum_of_best_nonsubsplit);
+fn time_to_duration(time: &Time) -> Duration
+{
+	let total_seconds = i64::from(time.second()) + (i64::from(time.minute()) * 60) + (i64::from(time.hour()) * (60*60));
+	return Duration::new(total_seconds, time.nanosecond() as i32);
 }
 
 // Opens a LSS file and parses it as XML.
