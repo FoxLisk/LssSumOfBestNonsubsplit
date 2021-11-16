@@ -8,4 +8,4 @@ This application takes a LiveSplit file containing subsplits and outputs both th
 To use, run the executable from a command line and provide the path to the target livesplit file as an argument, for example:
 > sum_of_best_nonubsplit_segments.exe C:/path/to/MySplitFile.lss
 
-The project has been tested on Windows only, though being done in Rust it *should* work on Linux, though no guarantees.
+The project has been tested on Windows only, though being done in Rust it *should* work on Linux, but no guarantees.
