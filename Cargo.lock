@@ -257,7 +257,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4d15c810519a91cf877e7e36e63fe068815c678181439f2f29e2562147c3694"
 
 [[package]]
-name = "sum_of_best_nonubsplit_segments"
+name = "sum_of_best_segments"
 version = "0.1.0"
 dependencies = [
  "clap",

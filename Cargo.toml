@@ -1,5 +1,5 @@
 [package]
-name = "sum_of_best_nonubsplit_segments"
+name = "sum_of_best_segments"
 version = "0.1.0"
 authors = ["Chris Cenotti <chris.cenotti+dev@gmail.com>>"]
 edition = "2018"
