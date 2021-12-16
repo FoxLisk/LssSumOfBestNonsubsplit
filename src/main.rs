@@ -24,6 +24,12 @@ fn main()
         panic!("ERROR: Specify the .lss file to parse as a command line argument.\n    Example: {} MySplits.lss", args[0]);
     }
 
+    ////////////////////////////////
+    // Temp Debug code
+    let start_segment = "Palace of Darkness";
+    let end_segment = "";
+    ////////////////////////////////
+
     let filename = &args[1];
 
     let root_element = parse_lss_file(filename.to_string());
@@ -43,23 +49,37 @@ fn main()
     
     let mut sum_of_best = Time::try_from_hms_nano(0,0,0,0).unwrap();
     let mut sum_of_best_nonsubsplit = Time::try_from_hms_nano(0,0,0,0).unwrap();
+    let mut add_time = start_segment.is_empty();
     for segment in &segments
     {
-        println!("{}", segment.name);
-        println!("  Best Segment: {}", segment.sum_of_best);
-        println!("  Best Segment NonSubplit: {}", segment.sum_of_best_nonsubsplit);
-    
-        sum_of_best += time_to_duration(&segment.sum_of_best);
-        sum_of_best_nonsubsplit += time_to_duration(&segment.sum_of_best_nonsubsplit);
+        if !start_segment.is_empty() && start_segment == segment.name
+        {
+            add_time = true;
+        }
 
-        // #[cfg(debug_assertions)]
-        // for subsplit in &segment.subsplits
-        // {
-        //     println!("  {}", subsplit);
-        // }
+        if add_time
+        {
+            println!("{}", segment.name);
+            println!("  Best Segment: {}", segment.sum_of_best);
+            println!("  Best Segment NonSubplit: {}", segment.sum_of_best_nonsubsplit);
+
+            sum_of_best += time_to_duration(&segment.sum_of_best);
+            sum_of_best_nonsubsplit += time_to_duration(&segment.sum_of_best_nonsubsplit);
+
+            // #[cfg(debug_assertions)]
+            // for subsplit in &segment.subsplits
+            // {
+            //     println!("  {}", subsplit);
+            // }
+        }
+
+        if !end_segment.is_empty() && end_segment == segment.name
+        {
+            add_time = false;
+        }
     }
 
-    println!("\nTraditional LSS Sum of Best: {}\nSum of Best Non-SubSplits: {}", sum_of_best, sum_of_best_nonsubsplit);
+    println!("\nSubsplit Sum of Best: {}\nSum of Best Non-SubSplits: {}", sum_of_best, sum_of_best_nonsubsplit);
 }
 
 fn time_to_duration(time: &Time) -> Duration
@@ -222,6 +242,7 @@ struct Segment
     name: String,
     sum_of_best: Time,
     sum_of_best_nonsubsplit: Time,
+    has_subsplits: bool
 }
 
 // Parses the LSS <Segments> node, converting the <Segment> nodes into SubSplit and Segment objects
@@ -238,13 +259,17 @@ fn build_segments(root: &xmltree::Element) -> Vec<Segment>
         {
             if child_segment.name == "Segment"
             {
+                let mut has_subsplits = false;
                 let subsplit = build_subsplit(child_segment);
                 
                 // #[cfg(debug_assertions)]
                 // println!("{}", subsplit);
                 
                 let is_segment = subsplit.name.chars().next().unwrap() != '-';
-                
+                if !is_segment
+                {
+                    has_subsplits = true;
+                }
                 subsplit_list.push(subsplit);
                  
                 if is_segment
@@ -258,6 +283,7 @@ fn build_segments(root: &xmltree::Element) -> Vec<Segment>
                         name: segment_subsplit.name.clone(),
                         sum_of_best: sum_of_best_time,
                         sum_of_best_nonsubsplit: sum_of_best_nonsubsplit,
+                        has_subsplits: has_subsplits,
                     };
 
                     segment_list.push(segment);
