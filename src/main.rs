@@ -1,5 +1,4 @@
 use std::{
-    env,
     fmt,
     fs::File,
     collections::BTreeMap,
@@ -15,22 +14,23 @@ use time::{
     Time
 };
 
+extern crate clap;
+use clap::App;
+
 fn main()
 {
-    let args: Vec<String> = env::args().collect();
+    let matches = App::new("Sum of Best Tool")
+        .version("1.1")
+        .about("Calculates sum of best for a range of segments and subsplits, outputs subsplit and non-subsplit totals")
+        .args_from_usage(
+            "<LSS_FILE>             'Filename (including path) of the LSS File to parse'
+            -s, --start_segment=[SEGMENT_NAME]  'Name of the segment to start calculating from (inclusive)'
+            -e, --end_segment=[SEGMENT_NAME]  'Name of the segment to end calculating from (inclusive)'")
+        .get_matches();
 
-    if args.len() < 2
-    {
-        panic!("ERROR: Specify the .lss file to parse as a command line argument.\n    Example: {} MySplits.lss", args[0]);
-    }
-
-    ////////////////////////////////
-    // Temp Debug code
-    let start_segment = "Palace of Darkness";
-    let end_segment = "";
-    ////////////////////////////////
-
-    let filename = &args[1];
+    let filename = matches.value_of("LSS_FILE").unwrap();
+    let start_segment = matches.value_of("start_segment").unwrap_or("");
+    let end_segment = matches.value_of("end_segment").unwrap_or("");
 
     let root_element = parse_lss_file(filename.to_string());
 
@@ -50,6 +50,7 @@ fn main()
     let mut sum_of_best = Time::try_from_hms_nano(0,0,0,0).unwrap();
     let mut sum_of_best_nonsubsplit = Time::try_from_hms_nano(0,0,0,0).unwrap();
     let mut add_time = start_segment.is_empty();
+    let mut has_subsplits = false;
     for segment in &segments
     {
         if !start_segment.is_empty() && start_segment == segment.name
@@ -61,7 +62,11 @@ fn main()
         {
             println!("{}", segment.name);
             println!("  Best Segment: {}", segment.sum_of_best);
-            println!("  Best Segment NonSubplit: {}", segment.sum_of_best_nonsubsplit);
+            if segment.has_subsplits
+            {
+                println!("  Best Segment NonSubplit: {}", segment.sum_of_best_nonsubsplit);
+                has_subsplits = true;
+            }
 
             sum_of_best += time_to_duration(&segment.sum_of_best);
             sum_of_best_nonsubsplit += time_to_duration(&segment.sum_of_best_nonsubsplit);
@@ -79,7 +84,11 @@ fn main()
         }
     }
 
-    println!("\nSubsplit Sum of Best: {}\nSum of Best Non-SubSplits: {}", sum_of_best, sum_of_best_nonsubsplit);
+    println!("\nSubsplit Sum of Best: {}", sum_of_best);
+    if has_subsplits
+    {
+        println!("Sum of Best Non-SubSplits: {}", sum_of_best_nonsubsplit);
+    }
 }
 
 fn time_to_duration(time: &Time) -> Duration
@@ -242,7 +251,7 @@ struct Segment
     name: String,
     sum_of_best: Time,
     sum_of_best_nonsubsplit: Time,
-    has_subsplits: bool
+    has_subsplits: bool,
 }
 
 // Parses the LSS <Segments> node, converting the <Segment> nodes into SubSplit and Segment objects
@@ -253,25 +262,25 @@ fn build_segments(root: &xmltree::Element) -> Vec<Segment>
 
     let num_segments = segments_root.children.len();
     let mut subsplit_list: Vec<SubSplit> = Vec::new();
+    let mut has_subsplits = false;
     for i in 0..num_segments
     {
         if let xmltree::XMLNode::Element(child_segment) = &segments_root.children.get(i).unwrap()
         {
             if child_segment.name == "Segment"
             {
-                let mut has_subsplits = false;
                 let subsplit = build_subsplit(child_segment);
                 
                 // #[cfg(debug_assertions)]
                 // println!("{}", subsplit);
                 
                 let is_segment = subsplit.name.chars().next().unwrap() != '-';
-                if !is_segment
+                if is_segment == false
                 {
                     has_subsplits = true;
                 }
                 subsplit_list.push(subsplit);
-                 
+
                 if is_segment
                 {
                     let segment_subsplit = &subsplit_list.last().unwrap();
@@ -288,6 +297,7 @@ fn build_segments(root: &xmltree::Element) -> Vec<Segment>
 
                     segment_list.push(segment);
                     subsplit_list.clear();
+                    has_subsplits = false;
                 }
             }
         }
