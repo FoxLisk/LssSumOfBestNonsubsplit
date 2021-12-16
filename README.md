@@ -11,3 +11,4 @@ To use, run the executable from a command line and provide the path to the targe
 v1.2 added support for specifying a start/end segment to be able to see sum of best for an arbitrary set of segments. This support works on any LSS file (no subsplits required). See the [v1.2 release page](https://github.com/mcmonkey819/LssSumOfBestNonsubsplit/releases/tag/v1.2) for more details and some examples. 
 
 The project has been tested on Windows only. Being done in Rust it *should* work on Linux, but no guarantees.
+It was also made with ALTTP in mind, but it should work for any livesplit file, though YMMV.
