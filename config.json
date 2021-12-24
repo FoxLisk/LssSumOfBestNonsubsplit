@@ -1,0 +1,15 @@
+[
+  {
+  "name": "Dark World",
+  "start": "Palace of Darkness"
+  },
+  {
+    "name": "Light World",
+    "start": "Escape (Sanc Exit)",
+    "end": "Blue Balls"
+  },
+  {
+    "name": "Endgame",
+    "start": "Swamp Palace"
+  }
+]
