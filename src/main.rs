@@ -13,6 +13,8 @@ use serde::Deserialize;
 
 extern crate clap;
 use clap::App;
+use std::path::Path;
+use std::fs::read_to_string;
 
 #[derive(Deserialize)]
 struct SubSegment {
@@ -45,9 +47,7 @@ impl SubSegmentContext {
         }
         if self.active {
             self.length += time_to_duration(&segment.sum_of_best);
-            if segment.has_subsplits {
-                self.length_non_subsplit += time_to_duration(&segment.sum_of_best_nonsubsplit);
-            }
+            self.length_non_subsplit += time_to_duration(&segment.sum_of_best_nonsubsplit);
         }
 
         match &self.sub_segment.end {
@@ -81,6 +81,21 @@ fn main() {
             start: start_segment.to_owned(),
             end: matches.value_of("end_segment").map(|s| s.to_owned()),
         }));
+    }
+
+    if let Some(sub_segment_config) = matches.value_of("config") {
+        let p = Path::new(sub_segment_config);
+        if !p.exists() {
+            println!("Error: could not find config file {}", sub_segment_config);
+        } else {
+            let c = read_to_string(p).unwrap();
+            let deserialized: Vec<SubSegment> = serde_json::from_str(&*c).unwrap();
+            for s in deserialized {
+                sub_segments.push(
+                  SubSegmentContext::new(s)
+                );
+            }
+        }
     }
 
     let root_element = parse_lss_file(filename.to_string());
@@ -119,6 +134,7 @@ fn main() {
             );
         }
     }
+    println!();
 
     for sub_segment in sub_segments {
         println!("{}", sub_segment.sub_segment.name);
